@@ -1,0 +1,21 @@
+# Node.js / Lambda
+node_modules/
+npm-debug.log
+.env
+*.env
+.DS_Store
+
+# AWS SAM / Lambda build files
+.aws-sam/
+dist/
+build/
+
+# VS Code / IDE
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+
+# OS generated files
+Thumbs.db

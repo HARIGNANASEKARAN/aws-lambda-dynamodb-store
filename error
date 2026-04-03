@@ -1,0 +1,307 @@
+# =========================================================
+# Mini Store Errors & Resolutions
+# Date: 2026-04-03
+# =========================================================
+
+# ---------------------------------------------------------
+# 1️⃣ Error: "require is not defined in ES module scope"
+# ---------------------------------------------------------
+# Occurred in Lambda on Node.js 24.x runtime:
+# ReferenceError: require is not defined in ES module scope, you can use import instead
+# Stack trace example:
+#   at file:///var/task/index.mjs:1:13
+# Cause:
+# - Node.js 24.x Lambda uses ES Modules
+# - Using `const AWS = require('aws-sdk')` is invalid in ES Module
+# Resolution:
+# - Use ES Module imports:
+#   import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+#   import { DynamoDBDocumentClient, ScanCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+# - Rename Lambda file extension to `.mjs`
+# - Replace require() with import/export
+
+# ---------------------------------------------------------
+# 2️⃣ Error: "Route not found" in frontend
+# ---------------------------------------------------------
+# Occurred when calling API from HTML /fetch
+# Example: fetch(API + "/products")
+# Cause:
+# - The path in Lambda code used event.resource, which matches API Gateway resource path.
+# - Resource paths in API Gateway are case-sensitive and must match exactly
+#   e.g., `/Products` vs `/products`
+# Resolution:
+# - Check resource path in API Gateway exactly
+#   - Lambda code should check `/Products` and `/Orders` if those are the resource names
+# - Match frontend fetch calls to the same resource path
+#   - fetch(API + "/Products") for GET
+#   - fetch(API + "/Orders") for POST
+
+# ---------------------------------------------------------
+# 3️⃣ Error: 403 / CORS errors from frontend
+# ---------------------------------------------------------
+# Occurred when S3 hosted HTML tried to call API Gateway
+# Cause:
+# - API Gateway did not have CORS enabled
+# - Browser blocked cross-origin request
+# Resolution:
+# - Enable CORS in API Gateway on both /Products and /Orders
+#   - Allowed origins: *
+#   - Allowed methods: GET, POST
+# - Or, configure Lambda proxy response to include headers:
+#   headers: { "Access-Control-Allow-Origin": "*" }
+
+# ---------------------------------------------------------
+# 4️⃣ Error: Lambda invocation fails silently (Init Error)
+# ---------------------------------------------------------
+# Example log:
+#   INIT_REPORT Init Duration: 314.86 ms Phase: init Status: error
+#   Error Type: Runtime.Unknown
+# Cause:
+# - Lambda function code invalid (require used in ES Module)
+# - Missing dependencies
+# Resolution:
+# - Fix ES Module imports
+# - Ensure node_modules are included if using packages not built-in in Lambda
+# - Check Node.js runtime version (24.x) matches ES Module style
+
+# ---------------------------------------------------------
+# 5️⃣ Error: POST requests fail / no body parsed
+# ---------------------------------------------------------
+# Cause:
+# - Lambda event.body is a string by default in Lambda proxy integration
+# - Forgot to JSON.parse(event.body)
+# Resolution:
+# - Parse event body:
+#   const body = JSON.parse(event.body);
+
+# ---------------------------------------------------------
+# 6️⃣ Error: API Gateway Invoke permission denied
+# ---------------------------------------------------------
+# Cause:
+# - Lambda did not have a resource policy allowing API Gateway to invoke it
+# Resolution:
+# - Add permission via CLI:
+# aws lambda add-permission --function-name store-api \
+#     --statement-id api-gateway-invoke \
+#     --action lambda:InvokeFunction \
+#     --principal apigateway.amazonaws.com
+
+# ---------------------------------------------------------
+# 7️⃣ Error: S3 static website cannot load HTML / JS
+# ---------------------------------------------------------
+# Cause:
+# - Bucket had Block Public Access enabled
+# - Objects not public
+# Resolution:
+# - Disable "Block all public access" when creating bucket
+# - Add bucket policy for public read:
+cat > s3-bucket-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::mini-store-YOURNAME-123/*"
+    }
+  ]
+}
+EOF
+# - Upload HTML/JS files to S3 bucket
+# - Enable Static Website Hosting in S3 bucket properties
+
+# ---------------------------------------------------------
+# 8️⃣ Error: Node.js local dev confusion (npm / modules)
+# ---------------------------------------------------------
+# Cause:
+# - You did not have local npm project
+# - Tried using @aws-sdk modules without installing them
+# Resolution:
+# - If using local dev, run:
+#   npm init -y
+#   npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+# - For Lambda deployment without local, AWS Lambda Node.js runtime includes `aws-sdk` built-in
+
+# ---------------------------------------------------------
+# 9️⃣ Error: Misaligned API Stage / URL
+# ---------------------------------------------------------
+# Cause:
+# - Stage Dev URL: https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev
+# - Frontend fetch call used wrong case or missing stage prefix
+# Resolution:
+# - Always include stage in URL:
+#   fetch("https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev/Products")
+# - Match resource paths exactly as in API Gateway
+
+# =========================================================
+# ✅ Summary of Lessons Learned
+# ---------------------------------------------------------
+# 1. Node.js 24.x Lambda => Use ES Modules (import/export)
+# 2. Always match API Gateway resource paths in Lambda and frontend
+# 3. CORS must be configured for S3 hosted HTML + API Gateway
+# 4. Lambda POST requires JSON.parse(event.body)
+# 5. Always deploy API Gateway stage after code/resource changes
+# 6. S3 hosting requires public read / static website configuration
+# 7. Check CloudWatch logs for detailed Lambda errors
+# 8. API Gateway permission needed for Lambda invocation
+# =========================================================
+
+#!/bin/bash
+# Mini Store: Common Errors & Fixes (Bash Checklist)
+
+echo "=== 1️⃣ Route not found (API Gateway / Lambda) ==="
+echo "Error:"
+echo "Invoke-RestMethod : {\"message\":\"Route not found\"}"
+echo "Cause:"
+echo "- Lambda was using event.resource instead of event.rawPath"
+echo "- HTTP method check mismatch"
+echo "Fix:"
+echo "- Use event.rawPath for routes"
+echo "- Match HTTP method (GET for /Products, POST for /Orders)"
+
+echo ""
+echo "=== 2️⃣ Internal Server Error (500) on POST /Orders ==="
+echo "Error:"
+echo "Invoke-RestMethod : {\"message\":\"Internal Server Error\"}"
+echo "Cause:"
+echo "- Lambda failed because payload format was wrong or headers missing"
+echo "- POST body sent as ['1'] instead of [{id:'1', quantity:1}]"
+echo "Fix:"
+echo "- Send JSON body: { items: [{ id: '1', quantity: 1 }] }"
+echo "- Add Content-Type: application/json header"
+
+echo ""
+echo "=== 3️⃣ CORS error in browser ==="
+echo "Error:"
+echo "Access to fetch at 'https://.../Orders' from origin 'https://my-mini-store-123.s3...'"
+echo "has been blocked by CORS policy"
+echo "Cause:"
+echo "- Browser requires OPTIONS preflight request for POST with JSON"
+echo "- API Gateway CORS headers missing or incomplete"
+echo "- Lambda response missing Access-Control-Allow-Origin"
+echo "Fix:"
+echo "- API Gateway: Allow-Origin: *, Methods: GET,POST,OPTIONS, Headers: *"
+echo "- Lambda: Add OPTIONS handler returning 200 with headers"
+echo "- Lambda: Include Access-Control-Allow-Origin in all responses"
+
+echo ""
+echo "=== 4️⃣ Preflight OPTIONS blocked ==="
+echo "Symptom:"
+echo "- POST request fails before reaching Lambda"
+echo "- Network tab shows OPTIONS request failed"
+echo "Cause:"
+echo "- No handler for OPTIONS method in Lambda"
+echo "Fix:"
+echo "if (method === 'OPTIONS') { return 200 with CORS headers }"
+
+echo ""
+echo "=== 5️⃣ Missing Access-Control-Allow-Headers ==="
+echo "Error:"
+echo "- 'No headers are allowed' in API Gateway CORS"
+echo "Cause:"
+echo "- Browser sends Content-Type header with POST"
+echo "- API Gateway rejects request because headers not allowed"
+echo "Fix:"
+echo "- Set Access-Control-Allow-Headers: * (or include Content-Type)"
+
+echo ""
+echo "=== 6️⃣ favicon.ico 403 Forbidden ==="
+echo "Error:"
+echo "GET https://my-mini-store-123.s3.../favicon.ico 403"
+echo "Cause:"
+echo "- Browser automatically requests favicon.ico from S3"
+echo "- Object does not exist"
+echo "Fix:"
+echo "- Optional: Ignore error"
+echo "- Or upload a favicon.ico to S3 bucket"
+
+echo ""
+echo "=== 7️⃣ Browser caching old index.html ==="
+echo "Symptom:"
+echo "- Changes to index.html not reflected after upload"
+echo "Cause:"
+echo "- Browser cached old version"
+echo "Fix:"
+echo "- Hard refresh: Ctrl+Shift+R (Windows) or Command+Shift+R (Mac)"
+echo "- Optionally clear cache or open in Incognito mode"
+
+echo ""
+echo "=== 8️⃣ Button click not triggering order ==="
+echo "Symptom:"
+echo "- Clicking 'Place Order' does nothing"
+echo "Cause:"
+echo "- Function name mismatch or JS error"
+echo "- CORS preventing fetch from completing"
+echo "Fix:"
+echo "- Ensure <button onclick='order()'> matches function order()"
+echo "- Use DevTools → Console & Network to debug"
+echo "- Fix CORS headers in Lambda/API Gateway"
+
+echo ""
+echo "=== 9️⃣ Hard-to-debug differences between PowerShell vs Browser ==="
+echo "Symptom:"
+echo "- POST /Orders works in PowerShell but fails in browser"
+echo "Cause:"
+echo "- PowerShell ignores CORS, browser enforces it"
+echo "Fix:"
+echo "- Always test frontend in browser"
+echo "- Implement proper CORS headers and OPTIONS preflight"
+
+echo ""
+echo "=== ✅ Summary ==="
+echo "- Always check route, method, payload format"
+echo "- Always add CORS headers (Lambda + API Gateway)"
+echo "- Handle OPTIONS preflight"
+echo "- Hard refresh after S3 updates"
+echo "- Use DevTools for debugging requests/errors"
+
+all the errors and their fixes we encountered today:
+
+Route not found
+500 Internal Server Error on POST
+CORS blocked in browser
+OPTIONS preflight blocked
+Missing Allowed-Headers
+favicon.ico 403
+Browser caching old HTML
+Button click not triggering order
+PowerShell vs Browser differences
+
+
+===============================================================
+
+PS C:\Users\dhaar> Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev/Orders" -Method POST -Headers @{ "Content-Type" = "application/json" } -Body '{ "items":[{"id":"1","quantity":2}] }'
+Invoke-RestMethod : {"message":"Internal Server Error"}
+At line:1 char:1
++ Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amaz ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [I
+   nvoke-RestMethod], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.Inv
+   okeRestMethodCommand
+PS C:\Users\dhaar> Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev/Orders" `
+>>   -Method POST `
+>>   -Headers @{ "Content-Type" = "application/json" } `
+>>   -Body '{ "items":[{"id":"1","quantity":2}] }'
+Invoke-RestMethod : {"message":"Internal Server Error"}
+At line:1 char:1
++ Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amaz ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [I
+   nvoke-RestMethod], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.Inv
+   okeRestMethodCommand
+PS C:\Users\dhaar>
+
+PS C:\Users\dhaar> Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev/Products"
+Invoke-RestMethod : {"message":"Route not found"}
+At line:1 char:1
++ Invoke-RestMethod -Uri "https://mslmh8j921.execute-api.us-east-1.amaz ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [I
+   nvoke-RestMethod], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.Inv
+   okeRestMethodCommand
+

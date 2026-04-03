@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title> Mini Store </title>
+    </head>
+<body>
+
+    <h1> Products </h1>
+    <div id="Products"> </div>
+    <button onclick="order()">Place Order</button>
+
+    <script> 
+        const API = "https://mslmh8j921.execute-api.us-east-1.amazonaws.com/Dev";
+
+        async function loadProducts() {
+            const res = await fetch(API + "/Products");
+            const data = await res.json();
+
+            document.getElementById("Products").innerHTML = 
+            data.map(p => `<p>${p.name} - ${p.price}</p>`).join('');
+        }
+
+        async function order() {
+            await fetch(API + "/Orders", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ items: ["1"]})
+            });
+            alert("Order placed!");
+        }
+
+        loadProducts();
+    </script>
+</body>
+
+</html>
